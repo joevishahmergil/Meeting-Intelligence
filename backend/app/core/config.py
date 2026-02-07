@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Groq API Configuration
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.1-70b-versatile"  # Fast and powerful model
+    GROQ_TRANSCRIPTION_MODEL: str = "distil-whisper-large-v3-en"  # Groq's transcription model
     
     # CORS Configuration
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"

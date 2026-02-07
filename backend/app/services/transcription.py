@@ -1,4 +1,4 @@
-import whisper
+from groq import Groq
 from app.core.database import get_supabase
 from app.core.config import settings
 import os
@@ -6,23 +6,13 @@ import tempfile
 import httpx
 
 
-# Load Whisper model (use 'base' for faster processing, 'large' for better accuracy)
-# You can change this to 'tiny', 'base', 'small', 'medium', or 'large'
-WHISPER_MODEL = "base"
-model = None
-
-
-def get_whisper_model():
-    """Lazy load Whisper model"""
-    global model
-    if model is None:
-        model = whisper.load_model(WHISPER_MODEL)
-    return model
+# Initialize Groq client
+groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
 
 async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
     """
-    Transcribe audio file using Whisper
+    Transcribe audio file using Groq Whisper (Serverless)
     
     Args:
         meeting_id: Meeting ID
@@ -41,6 +31,8 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
     transcript_response = supabase.table("transcripts").insert(transcript_data).execute()
     transcript_id = transcript_response.data[0]["id"]
     
+    temp_file_path = None
+    
     try:
         # Download audio file from Supabase Storage
         public_url = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).get_public_url(audio_file_path)
@@ -51,21 +43,28 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
             response.raise_for_status()
             
             # Save to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio_file_path)[1]) as temp_file:
+            # We use delete=False to close the file handle before reading it again
+            suffix = os.path.splitext(audio_file_path)[1]
+            if not suffix:
+                suffix = ".mp3"  # Default to mp3 if no extension
+                
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
                 temp_file.write(response.content)
                 temp_file_path = temp_file.name
         
-        # Transcribe using Whisper
-        whisper_model = get_whisper_model()
-        result = whisper_model.transcribe(temp_file_path)
-        
-        # Clean up temp file
-        os.unlink(temp_file_path)
+        # Transcribe using Groq
+        with open(temp_file_path, "rb") as file:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(os.path.basename(temp_file_path), file.read()),
+                model=settings.GROQ_TRANSCRIPTION_MODEL,
+                response_format="json",
+                temperature=0.0
+            )
         
         # Extract transcript
-        raw_transcript = result["text"]
+        raw_transcript = transcription.text
         
-        # Basic cleaning (you can enhance this)
+        # Basic cleaning
         cleaned_transcript = raw_transcript.strip()
         
         # Update transcript record
@@ -85,3 +84,11 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
         }).eq("id", transcript_id).execute()
         
         raise Exception(f"Transcription failed: {str(e)}")
+        
+    finally:
+        # Clean up temp file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception:
+                pass

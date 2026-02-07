@@ -26,8 +26,8 @@ pip install -r requirements.txt
 
 **What gets installed:**
 - FastAPI (web framework)
-- Groq API client (LLM - 0 GB!)
-- OpenAI Whisper (speech-to-text)
+- Groq API client (LLM & Transcription - 0 GB!)
+
 - Supabase client
 - Other utilities
 
@@ -143,9 +143,11 @@ Copy the `access_token` from the response.
 
 ## 🎯 What Changed from Ollama?
 
-| Before (Ollama) | After (Groq) |
+| Before (Ollama/Local Whisper) | After (Groq for All) |
+
 |-----------------|--------------|
-| Download 4-8 GB model | 0 GB download |
+| Download 4-8 GB model + Whisper | 0 GB download |
+
 | Install Ollama locally | Just get API key |
 | Run `ollama serve` | Nothing to run |
 | Slow inference | ⚡ Blazing fast |
