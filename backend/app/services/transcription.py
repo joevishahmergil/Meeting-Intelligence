@@ -1,18 +1,14 @@
-from groq import Groq
-from app.core.database import get_supabase
-from app.core.config import settings
+import base64
 import os
 import tempfile
 import httpx
-
-
-# Initialize Groq client
-groq_client = Groq(api_key=settings.GROQ_API_KEY)
+from app.core.database import get_supabase
+from app.core.config import settings
 
 
 async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
     """
-    Transcribe audio file using Groq Whisper (Serverless)
+    Transcribe audio file using Groq's Whisper API
     
     Args:
         meeting_id: Meeting ID
@@ -52,24 +48,18 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
                 temp_file.write(response.content)
                 temp_file_path = temp_file.name
         
-        # Transcribe using Groq
-        with open(temp_file_path, "rb") as file:
-            transcription = groq_client.audio.transcriptions.create(
-                file=(os.path.basename(temp_file_path), file.read()),
-                model=settings.GROQ_TRANSCRIPTION_MODEL,
-                response_format="json",
-                temperature=0.0
-            )
+        # Transcribe using Groq's Whisper API
+        transcript = await transcribe_with_groq(temp_file_path)
         
-        # Extract transcript
-        raw_transcript = transcription.text
+        # Clean up temp file
+        os.unlink(temp_file_path)
         
         # Basic cleaning
-        cleaned_transcript = raw_transcript.strip()
+        cleaned_transcript = transcript.strip()
         
         # Update transcript record
         supabase.table("transcripts").update({
-            "raw_transcript": raw_transcript,
+            "raw_transcript": transcript,
             "cleaned_transcript": cleaned_transcript,
             "transcription_status": "completed"
         }).eq("id", transcript_id).execute()
@@ -84,11 +74,49 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
         }).eq("id", transcript_id).execute()
         
         raise Exception(f"Transcription failed: {str(e)}")
+
+
+async def transcribe_with_groq(audio_file_path: str) -> str:
+    """
+    Transcribe audio using Groq's Whisper API
+    
+    Args:
+        audio_file_path: Path to audio file
         
-    finally:
-        # Clean up temp file
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.unlink(temp_file_path)
-            except Exception:
-                pass
+    Returns:
+        Transcribed text
+    """
+    if not settings.GROQ_API_KEY:
+        raise ValueError("GROQ_API_KEY is not configured")
+    
+    # Read and encode audio file
+    with open(audio_file_path, "rb") as audio_file:
+        audio_data = audio_file.read()
+    
+    # Prepare the request to Groq
+    headers = {
+        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+    }
+    
+    # Use multipart form data for file upload
+    files = {
+        "file": (os.path.basename(audio_file_path), audio_data, "audio/mpeg")
+    }
+    
+    data = {
+        "model": "whisper-large-v3",  # Groq's Whisper model
+        "response_format": "json",
+        "language": "en"  # Optional: specify language
+    }
+    
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers=headers,
+            files=files,
+            data=data
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        return result.get("text", "")
