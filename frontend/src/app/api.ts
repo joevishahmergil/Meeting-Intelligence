@@ -35,6 +35,17 @@ export const loginUser = async (credentials: any) => {
     return response.json();
 };
 
+export const fetchCurrentUser = async () => {
+    const response = await fetch(`${API_URL}/auth/me`, {
+        headers: getAuthHeaders(),
+    });
+    handleAuthError(response);
+    if (!response.ok) {
+        throw new Error('Failed to fetch current user');
+    }
+    return response.json();
+};
+
 export const fetchEmailDraftForMeeting = async (meetingId: string) => {
     const response = await fetch(`${API_URL}/emails/meeting/${meetingId}`, {
         headers: getAuthHeaders(),
@@ -198,4 +209,46 @@ export const fetchMeetingDetail = async (id: string) => {
     handleAuthError(response);
     if (!response.ok) throw new Error('Failed to fetch meeting detail');
     return response.json();
+};
+
+export const updateMeeting = async (meetingId: string, data: any) => {
+    const response = await fetch(`${API_URL}/meetings/${meetingId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+    });
+    handleAuthError(response);
+    if (!response.ok) throw new Error('Failed to update meeting');
+    return response.json();
+};
+
+export const deleteMeeting = async (meetingId: string) => {
+    const response = await fetch(`${API_URL}/meetings/${meetingId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    handleAuthError(response);
+    if (!response.ok) throw new Error('Failed to delete meeting');
+    return true;
+};
+
+export const updateProject = async (projectId: string, data: any) => {
+    const response = await fetch(`${API_URL}/projects/${projectId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+    });
+    handleAuthError(response);
+    if (!response.ok) throw new Error('Failed to update project');
+    return response.json();
+};
+
+export const deleteProject = async (projectId: string) => {
+    const response = await fetch(`${API_URL}/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+    });
+    handleAuthError(response);
+    if (!response.ok) throw new Error('Failed to delete project');
+    return true;
 };

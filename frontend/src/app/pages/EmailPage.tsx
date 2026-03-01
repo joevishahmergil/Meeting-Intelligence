@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Mail, Send, X } from 'lucide-react';
+import { Mail, Send, X, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -20,6 +20,7 @@ export function EmailPage() {
   const recipients = draft?.recipients || [];
   const [sending, setSending] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!meetingId) return;
@@ -34,9 +35,11 @@ export function EmailPage() {
         setDraft(d);
         setSubject(d.subject || `Meeting Summary: ${m.title}`);
         setBody(d.body || '');
+        setLoading(false);
       })
       .catch(() => {
         setMeeting(null);
+        setLoading(false);
       });
     return () => {
       active = false;
@@ -64,6 +67,14 @@ export function EmailPage() {
   const handleCancel = () => {
     navigate(-1);
   };
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
   
   if (!meeting) {
     return (

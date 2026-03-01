@@ -1,17 +1,28 @@
-import { Calendar, Clock, Users, FileText, CheckCircle, ListTodo, MessageSquare, AlertTriangle, Mail, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, Users, FileText, CheckCircle, ListTodo, MessageSquare, AlertTriangle, Mail, CalendarPlus, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Textarea } from './ui/textarea';
 import { Meeting } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { updateMeeting, deleteMeeting } from '../api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface MeetingDetailViewProps {
   meeting: any;
+  defaultEditOpen?: boolean;
 }
 
-export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
+export function MeetingDetailView({ meeting, defaultEditOpen }: MeetingDetailViewProps) {
   const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(!!defaultEditOpen);
+  const [form, setForm] = useState({
+    title: meeting.title || '',
+    meeting_date: meeting.meeting_date || meeting.date,
+    meeting_time: meeting.meeting_time || meeting.time || '',
+    meeting_type: meeting.meeting_type || meeting.type || 'Discussion',
+  });
 
   const handleSendMOM = () => {
     navigate(`/email/${meeting.id}`);
@@ -19,6 +30,33 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
 
   const handleScheduleMeeting = () => {
     navigate(`/schedule/${meeting.id}`);
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this meeting? This cannot be undone.')) return;
+    try {
+      await deleteMeeting(meeting.id);
+      alert('Meeting deleted');
+      navigate('/calendar');
+    } catch (e) {
+      alert('Failed to delete meeting');
+    }
+  };
+
+  const handleUpdate = async () => {
+    try {
+      const payload: any = {
+        title: form.title,
+        meeting_date: form.meeting_date,
+        meeting_time: form.meeting_time,
+        meeting_type: form.meeting_type,
+      };
+      await updateMeeting(meeting.id, payload);
+      setEditOpen(false);
+      window.location.reload();
+    } catch (e) {
+      alert('Failed to update meeting');
+    }
   };
 
   // Format time for display: converts "14:30" to "2:30 PM"
@@ -44,9 +82,17 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
               <CardTitle className="text-2xl mb-2">{meeting.title}</CardTitle>
               <p className="text-indigo-600 font-medium">{meeting.project_name || meeting.projectName || 'General'}</p>
             </div>
-            <Badge className="bg-indigo-100 text-indigo-800">
-              {meeting.meeting_type || meeting.type}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-indigo-100 text-indigo-800">
+                {meeting.meeting_type || meeting.type}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                <Pencil className="w-4 h-4 mr-1" /> Edit
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDelete}>
+                <Trash2 className="w-4 h-4 mr-1" /> Delete
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -266,6 +312,65 @@ export function MeetingDetailView({ meeting }: MeetingDetailViewProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Meeting</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-700">Title</label>
+              <input
+                className="w-full px-3 py-2 border rounded-lg"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm text-gray-700">Date</label>
+                <input
+                  type="date"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  value={(form.meeting_date || '').toString().split('T')[0]}
+                  onChange={(e) => setForm({ ...form, meeting_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-700">Time</label>
+                <input
+                  type="time"
+                  className="w-full px-3 py-2 border rounded-lg"
+                  value={form.meeting_time || ''}
+                  onChange={(e) => setForm({ ...form, meeting_time: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm text-gray-700">Type</label>
+              <select
+                className="w-full px-3 py-2 border rounded-lg"
+                value={form.meeting_type}
+                onChange={(e) => setForm({ ...form, meeting_type: e.target.value })}
+              >
+                <option>Standup</option>
+                <option>Weekly Update</option>
+                <option>Client Call</option>
+                <option>Planning</option>
+                <option>Review</option>
+                <option>Discussion</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button onClick={handleUpdate}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

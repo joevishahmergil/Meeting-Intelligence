@@ -1,9 +1,10 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Clock, Users, Video, Calendar, Loader2 } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Video, Calendar, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { fetchMeetings } from '../api';
 import { useEffect, useState } from 'react';
+import { deleteMeeting } from '../api';
 
 export function CalendarDayViewPage() {
   const navigate = useNavigate();
@@ -118,6 +119,21 @@ export function CalendarDayViewPage() {
     navigate(`/meeting/${meeting.id}`);
   };
 
+  const handleEdit = (meeting: any) => {
+    navigate(`/meeting/${meeting.id}?edit=1`);
+  };
+
+  const handleDelete = async (meeting: any) => {
+    if (!confirm('Delete this meeting?')) return;
+    try {
+      await deleteMeeting(meeting.id);
+      // Reload meetings
+      setMeetingsData((prev) => prev.filter((m: any) => m.id !== meeting.id));
+    } catch (e) {
+      alert('Failed to delete meeting');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -201,6 +217,14 @@ export function CalendarDayViewPage() {
                               <p className="text-sm text-gray-600 mt-2">
                                 {meeting.projectName || 'Project Meeting'}
                               </p>
+                            </div>
+                            <div className="ml-4 flex-shrink-0 flex items-center gap-2">
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleEdit(meeting); }}>
+                                <Pencil className="w-4 h-4 mr-1" /> Edit
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleDelete(meeting); }}>
+                                <Trash2 className="w-4 h-4 mr-1" /> Delete
+                              </Button>
                             </div>
 
                             {meeting.status === 'Completed' && (

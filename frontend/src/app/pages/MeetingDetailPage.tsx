@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { fetchMeetingDetail } from '../api';
@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react';
 export function MeetingDetailPage() {
   const { meetingId } = useParams<{ meetingId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const openEdit = searchParams.get('edit') === '1';
 
   const [meeting, setMeeting] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,7 +90,7 @@ export function MeetingDetailPage() {
           </div>
         )}
 
-        <MeetingDetailView meeting={meeting} />
+        <MeetingDetailView meeting={meeting} defaultEditOpen={openEdit} />
       </div>
     </div>
   );

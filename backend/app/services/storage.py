@@ -5,7 +5,7 @@ import os
 import uuid
 
 
-ALLOWED_EXTENSIONS = {".wav", ".mp3"}
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".webm"}
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 

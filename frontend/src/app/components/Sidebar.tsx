@@ -1,9 +1,14 @@
-import { Home, Calendar, FolderKanban, Upload, User } from 'lucide-react';
+import { Home, Calendar, FolderKanban, Upload } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { currentUser } from '../data/mockData';
+import { useEffect, useState } from 'react';
+import { fetchCurrentUser } from '../api';
 
 export function Sidebar() {
   const location = useLocation();
+  const [user, setUser] = useState<{ full_name?: string; email?: string } | null>(null);
+  useEffect(() => {
+    fetchCurrentUser().then(setUser).catch(() => setUser(null));
+  }, []);
   
   const navItems = [
     { name: 'Home', icon: Home, path: '/home' },
@@ -11,6 +16,12 @@ export function Sidebar() {
     { name: 'Projects', icon: FolderKanban, path: '/projects' },
     { name: 'Upload Meeting', icon: Upload, path: '/upload-meeting' },
   ];
+  
+  const initials = (name?: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(/\s+/);
+    return (parts[0]?.[0] || '') + (parts[1]?.[0] || '');
+  };
   
   return (
     <div className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -54,11 +65,11 @@ export function Sidebar() {
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
           <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-sm font-medium">{currentUser.avatar}</span>
+            <span className="text-white text-sm font-medium">{initials(user?.full_name)}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{currentUser.name}</p>
-            <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name || 'User'}</p>
+            <p className="text-xs text-gray-500 truncate">{user?.email || ''}</p>
           </div>
         </div>
       </div>

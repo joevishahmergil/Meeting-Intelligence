@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, X, FileAudio, CheckCircle, Plus, Calendar as CalendarIcon, Clock, Users, FolderKanban } from 'lucide-react';
+import { Upload, Mic, Monitor, StopCircle, X, FileAudio, CheckCircle, Plus, Calendar as CalendarIcon, Clock, Users, FolderKanban } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Project } from '../types';
@@ -18,6 +18,14 @@ export function UploadMeetingPage() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordMode, setRecordMode] = useState<'mic' | 'system'>('mic');
+  const mediaRecorderRef = (window as any)._miMediaRecorderRef ?? { current: null as MediaRecorder | null };
+  const recordTimerRef = (window as any)._miRecordTimerRef ?? { current: 0 as any };
+  (window as any)._miMediaRecorderRef = mediaRecorderRef;
+  (window as any)._miRecordTimerRef = recordTimerRef;
+  let recordedChunks: BlobPart[] = [];
 
   // Form state
   const [projectsList, setProjectsList] = useState<Project[]>([]);
@@ -87,6 +95,18 @@ export function UploadMeetingPage() {
     });
   };
 
+  const renameRecording = (newName: string) => {
+    if (!audioFile) return;
+    const ext = audioFile.file.name.split('.').pop() || 'webm';
+    const finalName = newName.endsWith(`.${ext}`) ? newName : `${newName}.${ext}`;
+    const renamed = new File([audioFile.file], finalName, { type: audioFile.file.type });
+    setAudioFile({
+      file: renamed,
+      name: finalName,
+      size: audioFile.size
+    });
+  };
+
   const removeFile = () => {
     setAudioFile(null);
     setUploadProgress(0);
@@ -96,7 +116,7 @@ export function UploadMeetingPage() {
     const newErrors: Record<string, string> = {};
 
     if (!audioFile) {
-      newErrors.audio = 'Please upload an audio file';
+      newErrors.audio = 'Please upload or record an audio file';
     }
 
     if (showNewProjectInput) {
@@ -127,6 +147,82 @@ export function UploadMeetingPage() {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const stopAllStreams = (stream?: MediaStream) => {
+    try {
+      (stream || (mediaRecorderRef.current as any)?.stream)?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    } catch {}
+  };
+
+  const startRecordingMic = async () => {
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(micStream, { mimeType: 'audio/webm' });
+      recordedChunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      recorder.onstop = () => {
+        stopAllStreams(micStream);
+        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+        const file = new File([blob], `meeting-recording.webm`, { type: 'audio/webm' });
+        handleFileSelection(file);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(2000);
+      setIsRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch (e) {
+      alert('Failed to start microphone recording. Please allow microphone permission.');
+    }
+  };
+
+  const startRecordingSystem = async () => {
+    try {
+      // Capture system audio (via display) and mic, then mix
+      // Some browsers may require sharing a screen/tab and “Share system audio”
+      // Fallback to mic-only if system audio not available
+      // @ts-ignore
+      const displayStream: MediaStream = await (navigator.mediaDevices as any).getDisplayMedia({ audio: true, video: true });
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioCtx = new AudioContext();
+      const dest = audioCtx.createMediaStreamDestination();
+      const sysSource = audioCtx.createMediaStreamSource(displayStream);
+      const micSource = audioCtx.createMediaStreamSource(micStream);
+      sysSource.connect(dest);
+      micSource.connect(dest);
+      const mixedStream = dest.stream;
+      const recorder = new MediaRecorder(mixedStream, { mimeType: 'audio/webm' });
+      recordedChunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      recorder.onstop = () => {
+        stopAllStreams(displayStream);
+        stopAllStreams(micStream);
+        audioCtx.close();
+        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+        const file = new File([blob], `meeting-recording.webm`, { type: 'audio/webm' });
+        handleFileSelection(file);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(2000);
+      setIsRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to start system audio recording. Try microphone-only or ensure “Share system audio” is enabled.');
+    }
+  };
+
+  const stopRecording = () => {
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch {}
+    setIsRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = 0;
+    }
   };
 
   const handleSave = async (generateTranscript: boolean) => {
@@ -207,6 +303,37 @@ export function UploadMeetingPage() {
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">1. Upload Audio File</h2>
 
+          {/* Recording Controls */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700">Record mode:</label>
+              <select
+                className="px-2 py-1 border rounded"
+                value={recordMode}
+                onChange={(e) => setRecordMode(e.target.value as any)}
+              >
+                <option value="mic">Microphone</option>
+                <option value="system">System + Mic</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isRecording ? (
+                <Button
+                  variant="outline"
+                  onClick={() => (recordMode === 'system' ? startRecordingSystem() : startRecordingMic())}
+                >
+                  {recordMode === 'system' ? <Monitor className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
+                  {recordMode === 'system' ? 'Record System + Mic' : 'Record Mic'}
+                </Button>
+              ) : (
+                <Button variant="destructive" onClick={stopRecording}>
+                  <StopCircle className="w-4 h-4 mr-2" />
+                  Stop Recording ({Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, '0')})
+                </Button>
+              )}
+            </div>
+          </div>
+
           {!audioFile ? (
             <div
               onDragOver={handleDragOver}
@@ -237,13 +364,13 @@ export function UploadMeetingPage() {
                   or click to browse
                 </p>
                 <p className="text-sm text-gray-500 mb-6">
-                  Supported formats: .mp3, .wav (Max 500MB)
+                  Supported formats: .mp3, .wav, .webm (Max 500MB)
                 </p>
 
                 <label>
                   <input
                     type="file"
-                    accept=".mp3,.wav,audio/mpeg,audio/wav"
+                    accept=".mp3,.wav,.webm,audio/mpeg,audio/wav,audio/webm"
                     onChange={handleFileInput}
                     className="hidden"
                   />
@@ -266,9 +393,23 @@ export function UploadMeetingPage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-900 mb-1 truncate">
-                      {audioFile.name}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium text-gray-900 mb-1 truncate">
+                        {audioFile.name}
+                      </h4>
+                      <button
+                        type="button"
+                        className="text-xs text-indigo-600 underline"
+                        onClick={() => {
+                          const base = audioFile.name.replace(/\.[^.]+$/, '');
+                          const val = prompt('Rename recording', base);
+                          if (val && val.trim()) renameRecording(val.trim());
+                        }}
+                        disabled={isUploading}
+                      >
+                        Rename
+                      </button>
+                    </div>
                     <p className="text-sm text-gray-600 mb-2">{audioFile.size}</p>
 
                     {isUploading ? (

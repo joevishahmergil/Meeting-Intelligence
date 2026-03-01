@@ -1,4 +1,4 @@
-import { CheckCircle2, Mail, Calendar, ClipboardList, AlertTriangle, Clock, Loader2 } from 'lucide-react';
+import { CheckCircle2, Mail, Calendar, ClipboardList, AlertTriangle, Clock, Loader2, Pencil } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -184,6 +184,18 @@ export function HomePage() {
                                       )}
                                     </div>
                                     <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          const mid = (action as any).meeting_id || (action as any).meetingId || (action as any).meeting?.id;
+                                          if (!mid) { alert('Meeting id not found'); return; }
+                                          navigate(`/meeting/${mid}?edit=1`);
+                                        }}
+                                      >
+                                        <Pencil className="w-4 h-4 mr-2" />
+                                        Edit Meeting
+                                      </Button>
                                       {actionType === 'Email' || actionType === 'Meeting' ? (
                                         <Button
                                           size="sm"
@@ -254,6 +266,18 @@ export function HomePage() {
                       <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                         {followUp.status}
                       </Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const mid = (followUp as any).meeting_id || (followUp as any).meetingId;
+                          if (!mid) { alert('Meeting id not found'); return; }
+                          navigate(`/meeting/${mid}?edit=1`);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Edit Meeting
+                      </Button>
                     </div>
                   </div>
                 ))}

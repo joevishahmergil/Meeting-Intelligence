@@ -106,7 +106,12 @@ async def transcribe_with_groq(audio_file_path: str) -> str:
     
     # Determine content type based on file extension
     ext = os.path.splitext(audio_file_path)[1].lower()
-    content_type = "audio/wav" if ext == ".wav" else "audio/mpeg"
+    if ext == ".wav":
+        content_type = "audio/wav"
+    elif ext == ".webm":
+        content_type = "audio/webm"
+    else:
+        content_type = "audio/mpeg"
     
     # Use multipart form data for file upload
     files = {

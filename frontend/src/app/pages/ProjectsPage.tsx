@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderKanban, Calendar, Filter, Loader2 } from 'lucide-react';
+import { FolderKanban, Calendar, Filter, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Project } from '../types';
 import { MeetingDetailView } from '../components/MeetingDetailView';
-import { fetchProjects, fetchProjectMeetings, fetchMeetingDetail } from '../api';
+import { fetchProjects, fetchProjectMeetings, fetchMeetingDetail, updateProject, deleteProject, deleteMeeting } from '../api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 
 type MeetingTypeFilter = 'Weekly Update' | 'Standup' | 'Discussion' | 'Planning' | 'Review' | 'Client Call' | 'Other' | 'All';
 
@@ -25,6 +26,9 @@ export function ProjectsPage() {
 
   // Project card stats (meeting counts per project)
   const [projectStats, setProjectStats] = useState<Record<string, { meetings: number }>>({});
+  const [editOpen, setEditOpen] = useState(false);
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; description?: string; color: string }>({ name: '', description: '', color: '#3b82f6' });
 
   useEffect(() => {
     loadProjects();
@@ -72,6 +76,41 @@ export function ProjectsPage() {
     setSelectedProject(project);
     setFilterType('All');
     loadProjectMeetings(project.id);
+  };
+
+  const openEditProject = (project: Project) => {
+    setEditProject(project);
+    setEditForm({ name: project.name, description: project.description, color: project.color });
+    setEditOpen(true);
+  };
+
+  const saveEditProject = async () => {
+    if (!editProject) return;
+    try {
+      const updated = await updateProject(editProject.id, editForm);
+      setEditOpen(false);
+      // Update both list and header
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      if (selectedProject && selectedProject.id === updated.id) {
+        setSelectedProject(updated as any);
+      }
+    } catch (e) {
+      alert('Failed to update project');
+    }
+  };
+
+  const removeProject = async (project: Project) => {
+    if (!confirm('Delete this project? Meetings remain, but project will be removed.')) return;
+    try {
+      await deleteProject(project.id);
+      setProjects((prev) => prev.filter((p) => p.id !== project.id));
+      if (selectedProject && selectedProject.id === project.id) {
+        setSelectedProject(null);
+        setProjectMeetings([]);
+      }
+    } catch (e) {
+      alert('Failed to delete project');
+    }
   };
 
   const handleMeetingClick = async (meeting: any) => {
@@ -130,9 +169,19 @@ export function ProjectsPage() {
     return (
       <div className="p-8">
         {/* Back Button */}
-        <Button variant="ghost" onClick={() => { setSelectedProject(null); setProjectMeetings([]); }} className="mb-6">
-          ← Back to Projects
-        </Button>
+        <div className="flex items-center justify-between mb-6">
+          <Button variant="ghost" onClick={() => { setSelectedProject(null); setProjectMeetings([]); }}>
+            ← Back to Projects
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => openEditProject(selectedProject)}>
+              <Pencil className="w-4 h-4 mr-1" /> Edit
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => removeProject(selectedProject)}>
+              <Trash2 className="w-4 h-4 mr-1" /> Delete
+            </Button>
+          </div>
+        </div>
 
         {/* Project Header */}
         <div className="mb-8">
@@ -296,6 +345,34 @@ export function ProjectsPage() {
                               >
                                 {meeting.status}
                               </Badge>
+                              <div className="ml-3 flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/meeting/${meeting.id}?edit=1`);
+                                  }}
+                                >
+                                  <Pencil className="w-4 h-4 mr-1" /> Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm('Delete this meeting?')) return;
+                                    try {
+                                      await deleteMeeting(meeting.id);
+                                      setProjectMeetings((prev) => prev.filter((m: any) => m.id !== meeting.id));
+                                    } catch {
+                                      alert('Failed to delete meeting');
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -350,7 +427,14 @@ export function ProjectsPage() {
                         <CardDescription className="mt-1">{project.description}</CardDescription>
                       </div>
                     </div>
-                    <FolderKanban className="w-6 h-6 text-gray-400" />
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); openEditProject(project); }}>
+                        <Pencil className="w-4 h-4 mr-1" /> Edit
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); removeProject(project); }}>
+                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -366,6 +450,32 @@ export function ProjectsPage() {
           })}
         </div>
       )}
+      {/* Edit Project Dialog (available on list view as well) */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-700">Name</label>
+              <input className="w-full px-3 py-2 border rounded-lg" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm text-gray-700">Description</label>
+              <input className="w-full px-3 py-2 border rounded-lg" value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm text-gray-700">Color</label>
+              <input type="color" className="w-16 h-10 p-1 border rounded" value={editForm.color} onChange={(e) => setEditForm({ ...editForm, color: e.target.value })} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+              <Button onClick={saveEditProject}>Save</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

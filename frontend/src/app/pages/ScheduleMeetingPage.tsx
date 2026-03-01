@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Users, X, CalendarPlus } from 'lucide-react';
+import { Calendar, Clock, Users, X, CalendarPlus, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,11 +14,18 @@ export function ScheduleMeetingPage() {
   const navigate = useNavigate();
   
   const [sourceMeeting, setSourceMeeting] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     if (!meetingId) return;
     fetchMeetingDetail(meetingId)
-      .then(setSourceMeeting)
-      .catch(() => setSourceMeeting(null));
+      .then((m) => {
+        setSourceMeeting(m);
+        setLoading(false);
+      })
+      .catch(() => {
+        setSourceMeeting(null);
+        setLoading(false);
+      });
   }, [meetingId]);
   
   // Find action that triggered this
@@ -55,6 +62,14 @@ export function ScheduleMeetingPage() {
   const handleCancel = () => {
     navigate(-1);
   };
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
   
   if (!sourceMeeting) {
     return (
