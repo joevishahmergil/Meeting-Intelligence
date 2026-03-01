@@ -55,6 +55,17 @@ async def startup_event():
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     print(f"Debug mode: {settings.DEBUG}")
     print(f"CORS origins: {settings.cors_origins_list}")
+    
+    # Validate Groq API key at startup
+    if not settings.GROQ_API_KEY:
+        print("⚠️  WARNING: GROQ_API_KEY is not set! Transcription will fail.")
+    elif not settings.GROQ_API_KEY.startswith("gsk_"):
+        print("⚠️  WARNING: GROQ_API_KEY doesn't look valid (should start with 'gsk_').")
+    else:
+        masked = f"{settings.GROQ_API_KEY[:8]}...{settings.GROQ_API_KEY[-4:]}"
+        print(f"✅ Groq API Key loaded: {masked}")
+    
+    print(f"Groq Transcription Model: {settings.GROQ_TRANSCRIPTION_MODEL}")
 
 
 @app.on_event("shutdown")

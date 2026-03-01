@@ -27,14 +27,20 @@ async def send_email(
         raise Exception("SMTP credentials not configured")
     
     try:
+        # Validate recipients and cc
+        valid_recipients = [r for r in (recipients or []) if isinstance(r, str) and '@' in r]
+        valid_cc = [c for c in (cc or []) if isinstance(c, str) and '@' in c]
+        if not valid_recipients:
+            valid_recipients = [settings.SMTP_FROM_EMAIL]
+        
         # Create message
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
         msg['From'] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
-        msg['To'] = ', '.join(recipients)
+        msg['To'] = ', '.join(valid_recipients)
         
-        if cc:
-            msg['Cc'] = ', '.join(cc)
+        if valid_cc:
+            msg['Cc'] = ', '.join(valid_cc)
         
         # Attach body
         msg.attach(MIMEText(body, 'html'))
@@ -44,14 +50,17 @@ async def send_email(
             server.starttls()
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             
-            all_recipients = recipients + (cc if cc else [])
-            server.sendmail(settings.SMTP_FROM_EMAIL, all_recipients, msg.as_string())
+            all_recipients = valid_recipients + valid_cc
+            result = server.sendmail(settings.SMTP_FROM_EMAIL, all_recipients, msg.as_string())
+            # smtplib returns a dict of failures; empty dict means success
+            if isinstance(result, dict) and len(result) > 0:
+                raise Exception(f"Some recipients were refused: {result}")
         
         return True
         
     except Exception as e:
-        print(f"Failed to send email: {e}")
-        return False
+        # Propagate detailed error to caller
+        raise Exception(str(e))
 
 
 def generate_meeting_summary_email(meeting_title: str, summary: str, decisions: List[str], action_items: List[dict]) -> str:

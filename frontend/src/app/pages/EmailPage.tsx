@@ -6,46 +6,61 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { meetings } from '../data/mockData';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fetchMeetingDetail, fetchEmailDraftForMeeting, sendEmailDraft } from '../api';
 
 export function EmailPage() {
   const { meetingId } = useParams();
   const navigate = useNavigate();
-  
-  const meeting = meetings.find(m => m.id === meetingId);
-  
-  const [subject, setSubject] = useState(
-    meeting ? `Meeting Summary: ${meeting.title}` : ''
-  );
-  
-  const [body, setBody] = useState(
-    meeting ? `Hi Team,
 
-Please find below the summary from our recent meeting "${meeting.title}" held on ${new Date(meeting.date).toLocaleDateString()}.
+  const [meeting, setMeeting] = useState<any | null>(null);
+  const [draft, setDraft] = useState<any | null>(null);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const recipients = draft?.recipients || [];
+  const [sending, setSending] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
-MEETING SUMMARY:
-${meeting.summary || 'No summary available'}
+  useEffect(() => {
+    if (!meetingId) return;
+    let active = true;
+    Promise.all([
+      fetchMeetingDetail(meetingId),
+      fetchEmailDraftForMeeting(meetingId),
+    ])
+      .then(([m, d]) => {
+        if (!active) return;
+        setMeeting(m);
+        setDraft(d);
+        setSubject(d.subject || `Meeting Summary: ${m.title}`);
+        setBody(d.body || '');
+      })
+      .catch(() => {
+        setMeeting(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [meetingId]);
 
-KEY DECISIONS:
-${meeting.decisions?.map((d, i) => `${i + 1}. ${d}`).join('\n') || 'No decisions recorded'}
-
-ACTION ITEMS:
-${meeting.actionItems?.map((a, i) => `${i + 1}. ${a.description} - ${a.assignedTo} (Due: ${new Date(a.dueDate).toLocaleDateString()})`).join('\n') || 'No action items'}
-
-Best regards,
-Meeting Intelligence Platform` : ''
-  );
-  
-  const recipients = meeting?.attendees || [];
-  
-  const handleSend = () => {
-    // Mock send - would integrate with email service in real app
-    console.log('Sending email:', { subject, body, recipients });
-    alert('Email sent successfully!');
-    navigate('/home');
+  const handleSend = async () => {
+    if (!draft?.id) {
+      alert('Email draft not ready yet');
+      return;
+    }
+    setSending(true);
+    try {
+      await sendEmailDraft(draft.id);
+      alert('Email sent successfully!');
+      navigate('/home');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to send email');
+    } finally {
+      setSending(false);
+    }
   };
-  
+
   const handleCancel = () => {
     navigate(-1);
   };
@@ -116,20 +131,36 @@ Meeting Intelligence Platform` : ''
               {/* Body */}
               <div>
                 <Label htmlFor="body">Message</Label>
-                <Textarea
-                  id="body"
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  className="mt-2 min-h-[400px] font-mono text-sm"
-                  placeholder="Email content"
+                <div
+                  className="mt-2 border rounded-lg p-4 bg-white max-h-[500px] overflow-auto prose prose-sm"
+                  dangerouslySetInnerHTML={{ __html: body || '<p>No content</p>' }}
                 />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowEditor(!showEditor)}
+                  >
+                    {showEditor ? 'Hide HTML' : 'Edit HTML'}
+                  </Button>
+                </div>
+                {showEditor && (
+                  <Textarea
+                    id="body"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    className="mt-2 min-h-[200px] font-mono text-sm"
+                    placeholder="Email HTML"
+                  />
+                )}
               </div>
               
               {/* Actions */}
               <div className="flex gap-3 pt-4 border-t">
-                <Button onClick={handleSend} className="flex-1 bg-indigo-600 hover:bg-indigo-700">
+                <Button onClick={handleSend} disabled={sending} className="flex-1 bg-indigo-600 hover:bg-indigo-700">
                   <Send className="w-4 h-4 mr-2" />
-                  Approve & Send
+                  {sending ? 'Sending...' : 'Approve & Send'}
                 </Button>
                 <Button variant="outline" onClick={handleCancel} className="flex-1">
                   Cancel
@@ -154,13 +185,13 @@ Meeting Intelligence Platform` : ''
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Project</p>
-                <p className="text-sm text-gray-600">{meeting.projectName}</p>
+                <p className="text-sm text-gray-600">{meeting.project_name || meeting.projectName || 'General'}</p>
               </div>
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Date</p>
                 <p className="text-sm text-gray-600">
-                  {new Date(meeting.date).toLocaleDateString('en-US', {
+                  {new Date(meeting.meeting_date || meeting.date).toLocaleDateString('en-US', {
                     weekday: 'long',
                     year: 'numeric',
                     month: 'long',
@@ -171,18 +202,18 @@ Meeting Intelligence Platform` : ''
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Type</p>
-                <Badge>{meeting.type}</Badge>
+                <Badge>{meeting.meeting_type || meeting.type}</Badge>
               </div>
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Attendees</p>
-                <p className="text-sm text-gray-600">{meeting.attendees.length} people</p>
+                <p className="text-sm text-gray-600">{(meeting.attendees || []).length} people</p>
               </div>
               
-              {meeting.actionItems && meeting.actionItems.length > 0 && (
+              {meeting.action_items && meeting.action_items.length > 0 && (
                 <div>
                   <p className="text-sm font-medium text-gray-900 mb-1">Action Items</p>
-                  <p className="text-sm text-gray-600">{meeting.actionItems.length} items</p>
+                  <p className="text-sm text-gray-600">{meeting.action_items.length} items</p>
                 </div>
               )}
             </CardContent>

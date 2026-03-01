@@ -30,29 +30,27 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
     temp_file_path = None
     
     try:
-        # Download audio file from Supabase Storage
-        public_url = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).get_public_url(audio_file_path)
-        
-        # Download file to temp location
-        async with httpx.AsyncClient() as client:
-            response = await client.get(public_url)
-            response.raise_for_status()
-            
-            # Save to temporary file
-            # We use delete=False to close the file handle before reading it again
-            suffix = os.path.splitext(audio_file_path)[1]
-            if not suffix:
-                suffix = ".mp3"  # Default to mp3 if no extension
-                
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(response.content)
-                temp_file_path = temp_file.name
+        # Download audio file bytes directly from Supabase Storage
+        print(f"[Transcription] Downloading audio from bucket: {settings.SUPABASE_STORAGE_BUCKET}, path: {audio_file_path}")
+        file_bytes: bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(audio_file_path)
+        print(f"[Transcription] Downloaded {len(file_bytes)} bytes")
+
+        # Save to temporary file
+        suffix = os.path.splitext(audio_file_path)[1]
+        if not suffix:
+            suffix = ".mp3"  # Default to mp3 if no extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_file.write(file_bytes)
+            temp_file_path = temp_file.name
         
         # Transcribe using Groq's Whisper API
+        print(f"[Transcription] Sending to Groq for transcription...")
         transcript = await transcribe_with_groq(temp_file_path)
+        print(f"[Transcription] Transcription complete, length: {len(transcript)} chars")
         
         # Clean up temp file
-        os.unlink(temp_file_path)
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
         
         # Basic cleaning
         cleaned_transcript = transcript.strip()
@@ -67,6 +65,14 @@ async def transcribe_audio(meeting_id: str, audio_file_path: str) -> str:
         return transcript_id
         
     except Exception as e:
+        print(f"[Transcription] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Clean up temp file on error
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        
         # Update transcript with error
         supabase.table("transcripts").update({
             "transcription_status": "failed",
@@ -98,15 +104,23 @@ async def transcribe_with_groq(audio_file_path: str) -> str:
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",
     }
     
+    # Determine content type based on file extension
+    ext = os.path.splitext(audio_file_path)[1].lower()
+    content_type = "audio/wav" if ext == ".wav" else "audio/mpeg"
+    
     # Use multipart form data for file upload
     files = {
-        "file": (os.path.basename(audio_file_path), audio_data, "audio/mpeg")
+        "file": (os.path.basename(audio_file_path), audio_data, content_type)
     }
     
+    # Use the model from settings instead of hardcoded value
+    model = settings.GROQ_TRANSCRIPTION_MODEL or "distil-whisper-large-v3-en"
+    print(f"[Transcription] Using Groq model: {model}")
+    
     data = {
-        "model": "whisper-large-v3",  # Groq's Whisper model
+        "model": model,
         "response_format": "json",
-        "language": "en"  # Optional: specify language
+        "language": "en"
     }
     
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -116,7 +130,11 @@ async def transcribe_with_groq(audio_file_path: str) -> str:
             files=files,
             data=data
         )
-        response.raise_for_status()
+        
+        if response.status_code != 200:
+            error_text = response.text
+            print(f"[Transcription] Groq API error ({response.status_code}): {error_text}")
+            response.raise_for_status()
         
         result = response.json()
         return result.get("text", "")

@@ -1,15 +1,39 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { meetings } from '../data/mockData';
+import { fetchMeetingDetail } from '../api';
 import { MeetingDetailView } from '../components/MeetingDetailView';
+import { useEffect, useState } from 'react';
 
 export function MeetingDetailPage() {
   const { meetingId } = useParams<{ meetingId: string }>();
   const navigate = useNavigate();
-  
-  const meeting = meetings.find(m => m.id === meetingId);
-  
+
+  const [meeting, setMeeting] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (meetingId) {
+      fetchMeetingDetail(meetingId)
+        .then(data => {
+          setMeeting(data);
+          setLoading(false);
+        })
+        .catch(e => {
+          console.error(e);
+          setLoading(false);
+        });
+    }
+  }, [meetingId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
   if (!meeting) {
     return (
       <div className="p-8">
@@ -23,9 +47,9 @@ export function MeetingDetailPage() {
       </div>
     );
   }
-  
+
   const isScheduled = meeting.status === 'Scheduled';
-  
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -39,31 +63,31 @@ export function MeetingDetailPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <h1 className="text-3xl font-semibold text-gray-900 mb-2">
           {meeting.title}
         </h1>
         <p className="text-gray-600">
-          {meeting.projectName} • {new Date(meeting.date).toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
+          {meeting.project_name || meeting.projectName || 'Project'} • {new Date(meeting.meeting_date || meeting.date).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
           })}
         </p>
       </div>
-      
+
       {/* Meeting Details */}
       <div className="max-w-5xl">
         {isScheduled && !meeting.transcript && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-900">
-              <strong>Note:</strong> This meeting is scheduled but hasn't occurred yet. 
+              <strong>Note:</strong> This meeting is scheduled but hasn't occurred yet.
               Transcript and summary will be available after the meeting is completed.
             </p>
           </div>
         )}
-        
+
         <MeetingDetailView meeting={meeting} />
       </div>
     </div>

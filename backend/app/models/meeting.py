@@ -11,6 +11,8 @@ class MeetingType(str, Enum):
     DISCUSSION = "Discussion"
     PLANNING = "Planning"
     REVIEW = "Review"
+    CLIENT_CALL = "Client Call"
+    OTHER = "Other"
 
 
 class MeetingStatus(str, Enum):

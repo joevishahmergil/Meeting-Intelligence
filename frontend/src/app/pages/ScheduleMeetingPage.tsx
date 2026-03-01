@@ -6,31 +6,44 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
-import { meetings } from '../data/mockData';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fetchMeetingDetail } from '../api';
 
 export function ScheduleMeetingPage() {
   const { meetingId } = useParams();
   const navigate = useNavigate();
   
-  const sourceMeeting = meetings.find(m => m.id === meetingId);
+  const [sourceMeeting, setSourceMeeting] = useState<any | null>(null);
+  useEffect(() => {
+    if (!meetingId) return;
+    fetchMeetingDetail(meetingId)
+      .then(setSourceMeeting)
+      .catch(() => setSourceMeeting(null));
+  }, [meetingId]);
   
   // Find action that triggered this
-  const triggerAction = sourceMeeting?.actionItems?.find(a => a.type === 'Meeting');
+  const triggerAction = sourceMeeting?.action_items?.find((a: any) => (a.action_type || a.type) === 'Meeting');
   
-  const [title, setTitle] = useState(
-    triggerAction?.description || 'Follow-up Meeting'
-  );
+  const [title, setTitle] = useState('Follow-up Meeting');
+  useEffect(() => {
+    setTitle(triggerAction?.description || 'Follow-up Meeting');
+  }, [sourceMeeting]);
   
   const [date, setDate] = useState('2026-02-10');
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState('60');
-  const [attendees, setAttendees] = useState(
-    sourceMeeting?.attendees.join(', ') || ''
-  );
-  const [agenda, setAgenda] = useState(
-    sourceMeeting ? `Follow-up on: ${sourceMeeting.title}\n\nAgenda:\n- Review action items\n- Discuss next steps` : ''
-  );
+  const [attendees, setAttendees] = useState('');
+  useEffect(() => {
+    setAttendees(sourceMeeting?.attendees?.join(', ') || '');
+  }, [sourceMeeting]);
+  const [agenda, setAgenda] = useState('');
+  useEffect(() => {
+    setAgenda(
+      sourceMeeting
+        ? `Follow-up on: ${sourceMeeting.title}\n\nAgenda:\n- Review action items\n- Discuss next steps`
+        : ''
+    );
+  }, [sourceMeeting]);
   
   const handleSchedule = () => {
     // Mock schedule - would integrate with calendar service in real app
@@ -194,13 +207,13 @@ export function ScheduleMeetingPage() {
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Project</p>
-                <p className="text-sm text-gray-600">{sourceMeeting.projectName}</p>
+                <p className="text-sm text-gray-600">{sourceMeeting.project_name || sourceMeeting.projectName || 'General'}</p>
               </div>
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Date</p>
                 <p className="text-sm text-gray-600">
-                  {new Date(sourceMeeting.date).toLocaleDateString('en-US', {
+                  {new Date(sourceMeeting.meeting_date || sourceMeeting.date).toLocaleDateString('en-US', {
                     weekday: 'long',
                     year: 'numeric',
                     month: 'long',
@@ -211,7 +224,7 @@ export function ScheduleMeetingPage() {
               
               <div>
                 <p className="text-sm font-medium text-gray-900 mb-1">Type</p>
-                <Badge>{sourceMeeting.type}</Badge>
+                <Badge>{sourceMeeting.meeting_type || sourceMeeting.type}</Badge>
               </div>
               
               {triggerAction && (

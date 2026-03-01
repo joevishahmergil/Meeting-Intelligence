@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, X, FileAudio, CheckCircle, Plus, Calendar as CalendarIcon, Clock, Users, FolderKanban } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
-import { projects } from '../data/mockData';
+import { Project } from '../types';
+import { fetchProjects, createProject, createMeeting, uploadMeetingAudio, processMeeting } from '../api';
 
 interface AudioFile {
   file: File;
@@ -17,9 +18,14 @@ export function UploadMeetingPage() {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  
+
   // Form state
+  const [projectsList, setProjectsList] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
+
+  useEffect(() => {
+    fetchProjects().then(setProjectsList).catch(console.error);
+  }, []);
   const [showNewProjectInput, setShowNewProjectInput] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [meetingTitle, setMeetingTitle] = useState('');
@@ -29,85 +35,70 @@ export function UploadMeetingPage() {
   const [meetingType, setMeetingType] = useState<string>('Weekly Update');
   const [attendees, setAttendees] = useState('');
   const [trackInCalendar, setTrackInCalendar] = useState(true);
-  
+
   // Validation state
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
-  
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
-  
+
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
-  
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
-    const audioFiles = files.filter(file => 
-      file.type === 'audio/mpeg' || 
-      file.type === 'audio/wav' || 
-      file.name.endsWith('.mp3') || 
+    const audioFiles = files.filter(file =>
+      file.type === 'audio/mpeg' ||
+      file.type === 'audio/wav' ||
+      file.name.endsWith('.mp3') ||
       file.name.endsWith('.wav')
     );
-    
+
     if (audioFiles.length > 0) {
       handleFileSelection(audioFiles[0]);
     }
   };
-  
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       handleFileSelection(files[0]);
     }
   };
-  
+
   const handleFileSelection = (file: File) => {
     setAudioFile({
       file,
       name: file.name,
       size: formatFileSize(file.size)
     });
-    
-    // Simulate upload progress
-    setIsUploading(true);
-    setUploadProgress(0);
-    
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsUploading(false);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 200);
   };
-  
+
   const removeFile = () => {
     setAudioFile(null);
     setUploadProgress(0);
   };
-  
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!audioFile) {
       newErrors.audio = 'Please upload an audio file';
     }
-    
+
     if (showNewProjectInput) {
       if (!newProjectName.trim()) {
         newErrors.project = 'Please enter a project name';
@@ -117,53 +108,83 @@ export function UploadMeetingPage() {
         newErrors.project = 'Please select a project';
       }
     }
-    
+
     if (!meetingTitle.trim()) {
       newErrors.title = 'Please enter a meeting title';
     }
-    
+
     if (!meetingDate) {
       newErrors.date = 'Please select a meeting date';
     }
-    
+
     if (!startTime) {
       newErrors.startTime = 'Please select a start time';
     }
-    
+
     if (!endTime) {
       newErrors.endTime = 'Please select an end time';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-  
-  const handleSave = (generateTranscript: boolean) => {
+
+  const handleSave = async (generateTranscript: boolean) => {
     if (!validateForm()) {
       return;
     }
-    
-    // In a real app, this would send the data to the backend
-    const meetingData = {
-      audioFile: audioFile?.file,
-      project: showNewProjectInput ? newProjectName : selectedProject,
-      title: meetingTitle,
-      date: meetingDate,
-      startTime,
-      endTime,
-      type: meetingType,
-      attendees: attendees.split(',').map(a => a.trim()),
-      trackInCalendar,
-      generateTranscript
-    };
-    
-    console.log('Saving meeting:', meetingData);
-    
-    // Show success message and redirect
-    alert(`Meeting ${generateTranscript ? 'saved and processing transcript' : 'saved successfully'}!`);
-    navigate('/calendar');
+
+    setIsUploading(true);
+    setUploadProgress(10);
+
+    try {
+      let projectId = selectedProject;
+
+      if (showNewProjectInput) {
+        setUploadProgress(20);
+        const newProj = await createProject({
+          name: newProjectName,
+          color: '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')
+        });
+        projectId = newProj.id;
+      }
+
+      setUploadProgress(40);
+      const meetingData = {
+        project_id: projectId,
+        title: meetingTitle,
+        meeting_date: meetingDate,
+        meeting_time: startTime,
+        meeting_type: meetingType,
+        attendees: attendees.split(',').map(a => a.trim()).filter(a => a),
+        source: 'upload'
+      };
+
+      const meeting = await createMeeting(meetingData);
+
+      if (audioFile?.file) {
+        setUploadProgress(60);
+        await uploadMeetingAudio(meeting.id, audioFile.file);
+      }
+
+      if (generateTranscript) {
+        setUploadProgress(80);
+        await processMeeting(meeting.id);
+      }
+
+      setUploadProgress(100);
+      setIsUploading(false);
+
+      alert(`Meeting ${generateTranscript ? 'saved and processed successfully' : 'saved successfully'}!`);
+      navigate('/calendar');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to save or process meeting. Check console for details.');
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
-  
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -171,21 +192,21 @@ export function UploadMeetingPage() {
         <h1 className="text-3xl font-semibold text-gray-900 mb-2">Upload Meeting</h1>
         <p className="text-gray-600">Manually add a meeting using an audio recording</p>
       </div>
-      
+
       {/* Info Banner */}
       <div className="max-w-3xl mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
         <p className="text-sm text-indigo-900">
-          <strong>How it works:</strong> Upload your meeting audio file and fill in the details below. 
-          We'll process the audio and generate a transcript automatically. The meeting will then be 
+          <strong>How it works:</strong> Upload your meeting audio file and fill in the details below.
+          We'll process the audio and generate a transcript automatically. The meeting will then be
           available in your calendar and project dashboards.
         </p>
       </div>
-      
+
       <div className="max-w-3xl space-y-6">
         {/* Audio Upload Card */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">1. Upload Audio File</h2>
-          
+
           {!audioFile ? (
             <div
               onDragOver={handleDragOver}
@@ -193,10 +214,10 @@ export function UploadMeetingPage() {
               onDrop={handleDrop}
               className={`
                 border-2 border-dashed rounded-lg p-12 text-center transition-colors
-                ${isDragging 
-                  ? 'border-indigo-500 bg-indigo-50' 
-                  : errors.audio 
-                    ? 'border-red-300 bg-red-50' 
+                ${isDragging
+                  ? 'border-indigo-500 bg-indigo-50'
+                  : errors.audio
+                    ? 'border-red-300 bg-red-50'
                     : 'border-gray-300 hover:border-gray-400'
                 }
               `}
@@ -208,7 +229,7 @@ export function UploadMeetingPage() {
                 `}>
                   <Upload className={`w-8 h-8 ${isDragging ? 'text-indigo-600' : errors.audio ? 'text-red-600' : 'text-gray-400'}`} />
                 </div>
-                
+
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   Drop your audio file here
                 </h3>
@@ -218,7 +239,7 @@ export function UploadMeetingPage() {
                 <p className="text-sm text-gray-500 mb-6">
                   Supported formats: .mp3, .wav (Max 500MB)
                 </p>
-                
+
                 <label>
                   <input
                     type="file"
@@ -230,7 +251,7 @@ export function UploadMeetingPage() {
                     Select File
                   </span>
                 </label>
-                
+
                 {errors.audio && (
                   <p className="mt-4 text-sm text-red-600">{errors.audio}</p>
                 )}
@@ -243,17 +264,17 @@ export function UploadMeetingPage() {
                   <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <FileAudio className="w-5 h-5 text-indigo-600" />
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-gray-900 mb-1 truncate">
                       {audioFile.name}
                     </h4>
                     <p className="text-sm text-gray-600 mb-2">{audioFile.size}</p>
-                    
+
                     {isUploading ? (
                       <div className="space-y-2">
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
+                          <div
                             className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
                             style={{ width: `${uploadProgress}%` }}
                           />
@@ -270,7 +291,7 @@ export function UploadMeetingPage() {
                     )}
                   </div>
                 </div>
-                
+
                 <button
                   onClick={removeFile}
                   className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -282,11 +303,11 @@ export function UploadMeetingPage() {
             </div>
           )}
         </Card>
-        
+
         {/* Meeting Metadata Card */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">2. Meeting Information</h2>
-          
+
           <div className="space-y-4">
             {/* Project Selection */}
             <div>
@@ -294,7 +315,7 @@ export function UploadMeetingPage() {
                 <FolderKanban className="w-4 h-4" />
                 Project
               </label>
-              
+
               {!showNewProjectInput ? (
                 <div className="flex gap-2">
                   <select
@@ -306,13 +327,13 @@ export function UploadMeetingPage() {
                     `}
                   >
                     <option value="">Select a project...</option>
-                    {projects.map(project => (
+                    {projectsList.map(project => (
                       <option key={project.id} value={project.id}>
                         {project.name}
                       </option>
                     ))}
                   </select>
-                  
+
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -340,7 +361,7 @@ export function UploadMeetingPage() {
                       ${errors.project ? 'border-red-300' : 'border-gray-300'}
                     `}
                   />
-                  
+
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -353,12 +374,12 @@ export function UploadMeetingPage() {
                   </Button>
                 </div>
               )}
-              
+
               {errors.project && (
                 <p className="mt-1 text-sm text-red-600">{errors.project}</p>
               )}
             </div>
-            
+
             {/* Meeting Title */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -381,7 +402,7 @@ export function UploadMeetingPage() {
                 <p className="mt-1 text-sm text-red-600">{errors.title}</p>
               )}
             </div>
-            
+
             {/* Meeting Date */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -404,7 +425,7 @@ export function UploadMeetingPage() {
                 <p className="mt-1 text-sm text-red-600">{errors.date}</p>
               )}
             </div>
-            
+
             {/* Time Range */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -428,7 +449,7 @@ export function UploadMeetingPage() {
                   <p className="mt-1 text-sm text-red-600">{errors.startTime}</p>
                 )}
               </div>
-              
+
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                   <Clock className="w-4 h-4" />
@@ -451,7 +472,7 @@ export function UploadMeetingPage() {
                 )}
               </div>
             </div>
-            
+
             {/* Meeting Type */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -471,7 +492,7 @@ export function UploadMeetingPage() {
                 <option value="Other">Other</option>
               </select>
             </div>
-            
+
             {/* Attendees */}
             <div>
               <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -491,11 +512,11 @@ export function UploadMeetingPage() {
             </div>
           </div>
         </Card>
-        
+
         {/* Calendar Tracking Card */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">3. Calendar Options</h2>
-          
+
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -506,44 +527,47 @@ export function UploadMeetingPage() {
             <div>
               <span className="font-medium text-gray-900">Track this meeting in calendar</span>
               <p className="text-sm text-gray-600 mt-1">
-                When enabled, this meeting will appear in your calendar view and day-wise timeline. 
+                When enabled, this meeting will appear in your calendar view and day-wise timeline.
                 You can still access it from the project dashboard regardless of this setting.
               </p>
             </div>
           </label>
         </Card>
-        
+
         {/* Action Buttons */}
         <div className="flex gap-4">
           <Button
             variant="outline"
             onClick={() => navigate('/calendar')}
             className="flex-1"
+            disabled={isUploading}
           >
             Cancel
           </Button>
-          
+
           <Button
             onClick={() => handleSave(false)}
             variant="outline"
             className="flex-1"
+            disabled={isUploading}
           >
             Save Meeting
           </Button>
-          
+
           <Button
             onClick={() => handleSave(true)}
             className="flex-1"
+            disabled={isUploading}
           >
-            Save & Generate Transcript
+            {isUploading ? 'Processing...' : 'Save & Generate Transcript'}
           </Button>
         </div>
-        
+
         {/* Info Box */}
         <Card className="p-4 bg-blue-50 border-blue-200">
           <p className="text-sm text-blue-900">
-            <strong>Note:</strong> After saving, the meeting will be processed and available in your 
-            calendar and project dashboards. If you choose to generate a transcript, it may take a few 
+            <strong>Note:</strong> After saving, the meeting will be processed and available in your
+            calendar and project dashboards. If you choose to generate a transcript, it may take a few
             minutes to complete processing.
           </p>
         </Card>

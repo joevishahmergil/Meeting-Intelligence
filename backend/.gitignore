@@ -8,7 +8,8 @@ venv/
 env/
 ENV/
 .venv
-
+.envMeet
+envMeet/
 # Environment variables
 .env
 

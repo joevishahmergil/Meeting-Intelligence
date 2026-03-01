@@ -259,10 +259,15 @@ async def process_meeting(
     
     try:
         # Step 1: Transcribe audio
+        print(f"[Process] Step 1: Transcribing audio for meeting {meeting_id}")
+        print(f"[Process] Audio file path: {meeting['audio_file_path']}")
         transcript_id = await transcribe_audio(meeting_id, meeting["audio_file_path"])
+        print(f"[Process] Transcription complete. Transcript ID: {transcript_id}")
         
         # Step 2: Extract intelligence from transcript
+        print(f"[Process] Step 2: Extracting intelligence...")
         await extract_intelligence(meeting_id, transcript_id)
+        print(f"[Process] Intelligence extraction complete")
         
         # Update meeting status
         supabase.table("meetings").update({"status": MeetingStatus.COMPLETED.value}).eq("id", meeting_id).execute()
@@ -273,6 +278,9 @@ async def process_meeting(
             "transcript_id": transcript_id
         }
     except Exception as e:
+        print(f"[Process] ERROR processing meeting {meeting_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process meeting: {str(e)}"

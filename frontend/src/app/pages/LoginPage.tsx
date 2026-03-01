@@ -8,14 +8,70 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
   const navigate = useNavigate();
-  
-  const handleLogin = (e: React.FormEvent) => {
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock authentication - in real app, this would validate credentials
-    navigate('/home');
+    setError('');
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid credentials');
+      }
+
+      const data = await response.json();
+      localStorage.setItem('token', data.access_token);
+      navigate('/home');
+    } catch (err: any) {
+      setError(err.message || 'Failed to login');
+    } finally {
+      setLoading(false);
+    }
   };
-  
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let message = 'Registration failed';
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed.detail || message;
+        } catch {
+          // keep default
+        }
+        throw new Error(message);
+      }
+
+      const data = await response.json();
+      localStorage.setItem('token', data.access_token);
+      navigate('/home');
+    } catch (err: any) {
+      setError(err.message || 'Failed to register');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-blue-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-lg">
@@ -26,10 +82,30 @@ export function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl">Meeting Intelligence</CardTitle>
-          <CardDescription>Sign in to access your dashboard</CardDescription>
+          <CardDescription>
+            {mode === 'login' ? 'Sign in to access your dashboard' : 'Create your account to get started'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={mode === 'login' ? handleLogin : handleRegister} className="space-y-4">
+            {error && (
+              <div className="p-3 bg-red-100 text-red-600 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+            {mode === 'register' && (
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full name</Label>
+                <Input
+                  id="fullName"
+                  type="text"
+                  placeholder="Jane Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -52,9 +128,40 @@ export function LoginPage() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700">
-              Sign In
+            <Button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700">
+              {loading ? (mode === 'login' ? 'Signing In...' : 'Creating Account...') : (mode === 'login' ? 'Sign In' : 'Create Account')}
             </Button>
+            <div className="text-center text-sm text-gray-600">
+              {mode === 'login' ? (
+                <span>
+                  Don&apos;t have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('register');
+                      setError('');
+                    }}
+                    className="text-indigo-600 hover:underline"
+                  >
+                    Register
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError('');
+                    }}
+                    className="text-indigo-600 hover:underline"
+                  >
+                    Sign in
+                  </button>
+                </span>
+              )}
+            </div>
           </form>
         </CardContent>
       </Card>

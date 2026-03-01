@@ -1,26 +1,55 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Clock, Users, Video, Calendar } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Video, Calendar, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
-import { meetings } from '../data/mockData';
-import { Meeting } from '../types';
+import { fetchMeetings } from '../api';
+import { useEffect, useState } from 'react';
 
 export function CalendarDayViewPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
-  
+
   // Parse the date from URL params or use today
   const selectedDate = dateParam ? new Date(dateParam) : new Date();
-  
+
+  const [meetingsData, setMeetingsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMeetings()
+      .then(data => {
+        setMeetingsData(data);
+        setLoading(false);
+      })
+      .catch(e => {
+        console.error(e);
+        setLoading(false);
+      });
+  }, []);
+
   // Get meetings for the selected date
   const getMeetingsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return meetings.filter(m => m.date === dateStr);
+    const toYMD = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const normalize = (v: any): string | null => {
+      if (!v) return null;
+      if (v instanceof Date) return toYMD(v);
+      if (typeof v === 'string') return v.split('T')[0];
+      return null;
+    };
+    const dateStr = toYMD(date);
+    return meetingsData.filter((m: any) => {
+      const d =
+        normalize(m.meeting_date) ||
+        normalize(m.date) ||
+        normalize(m.meetingDate);
+      return d === dateStr;
+    });
   };
-  
+
   const dayMeetings = getMeetingsForDate(selectedDate);
-  
+
   // Generate time slots from 6 AM to 10 PM
   const timeSlots = Array.from({ length: 17 }, (_, i) => {
     const hour = i + 6; // Start from 6 AM
@@ -29,44 +58,74 @@ export function CalendarDayViewPage() {
       label: hour < 12 ? `${hour}:00 AM` : hour === 12 ? '12:00 PM' : `${hour - 12}:00 PM`
     };
   });
-  
+
   // Parse meeting time and get hour
+  // Handles both "HH:MM" (24h from backend) and "H:MM AM/PM" formats
   const getMeetingHour = (time: string) => {
-    const [timePart, period] = time.split(' ');
-    const [hourStr] = timePart.split(':');
-    let hour = parseInt(hourStr);
-    
-    if (period === 'PM' && hour !== 12) {
-      hour += 12;
-    } else if (period === 'AM' && hour === 12) {
-      hour = 0;
+    if (!time) return -1;
+
+    // Check for AM/PM format
+    if (time.includes('AM') || time.includes('PM')) {
+      const [timePart, period] = time.split(' ');
+      const [hourStr] = timePart.split(':');
+      let hour = parseInt(hourStr);
+
+      if (period === 'PM' && hour !== 12) {
+        hour += 12;
+      } else if (period === 'AM' && hour === 12) {
+        hour = 0;
+      }
+      return hour;
     }
-    
-    return hour;
+
+    // 24-hour format "HH:MM" or "HH:MM:SS"
+    const [hourStr] = time.split(':');
+    return parseInt(hourStr);
   };
-  
+
   // Get meetings for a specific hour
   const getMeetingsForHour = (hour: number) => {
-    return dayMeetings.filter(meeting => {
-      const meetingHour = getMeetingHour(meeting.time);
+    return dayMeetings.filter((meeting: any) => {
+      const meetingHour = getMeetingHour(meeting.meeting_time || meeting.time);
       return meetingHour === hour;
     });
   };
-  
+
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
-  
-  const handleMeetingClick = (meeting: Meeting) => {
+
+  // Format time for display: converts "14:30" to "2:30 PM" and passes through AM/PM format
+  const formatTime = (time: string) => {
+    if (!time) return '';
+    if (time.includes('AM') || time.includes('PM')) return time;
+    const [hourStr, minStr] = time.split(':');
+    const hour = parseInt(hourStr);
+    const min = minStr || '00';
+    if (hour === 0) return `12:${min} AM`;
+    if (hour < 12) return `${hour}:${min} AM`;
+    if (hour === 12) return `12:${min} PM`;
+    return `${hour - 12}:${min} PM`;
+  };
+
+  const handleMeetingClick = (meeting: any) => {
     // Navigate to detail page for all meetings, not just completed ones
     navigate(`/meeting/${meeting.id}`);
   };
-  
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -80,7 +139,7 @@ export function CalendarDayViewPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Calendar
         </Button>
-        
+
         <h1 className="text-3xl font-semibold text-gray-900 mb-2">
           {formatDate(selectedDate)}
         </h1>
@@ -88,13 +147,13 @@ export function CalendarDayViewPage() {
           {dayMeetings.length} {dayMeetings.length === 1 ? 'meeting' : 'meetings'} scheduled
         </p>
       </div>
-      
+
       {/* Day Timeline */}
       <Card className="p-6">
         <div className="space-y-0">
           {timeSlots.map((slot) => {
             const hourMeetings = getMeetingsForHour(slot.hour);
-            
+
             return (
               <div
                 key={slot.hour}
@@ -104,7 +163,7 @@ export function CalendarDayViewPage() {
                 <div className="w-24 py-4 pr-4 text-sm text-gray-500 font-medium flex-shrink-0">
                   {slot.label}
                 </div>
-                
+
                 {/* Meeting Slot */}
                 <div className="flex-1 py-2 min-h-[60px]">
                   {hourMeetings.length > 0 ? (
@@ -129,21 +188,21 @@ export function CalendarDayViewPage() {
                               <div className="flex items-center gap-4 text-sm text-gray-600">
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-3.5 h-3.5" />
-                                  {meeting.time}
+                                  {formatTime(meeting.meeting_time || meeting.time)}
                                 </span>
                                 <span className="flex items-center gap-1">
                                   <Users className="w-3.5 h-3.5" />
-                                  {meeting.attendees.length} attendees
+                                  {meeting.attendees?.length || 0} attendees
                                 </span>
                                 <span className="flex items-center gap-1 px-2 py-0.5 bg-white rounded text-xs">
-                                  {meeting.type}
+                                  {meeting.meeting_type || meeting.type}
                                 </span>
                               </div>
                               <p className="text-sm text-gray-600 mt-2">
-                                {meeting.projectName}
+                                {meeting.projectName || 'Project Meeting'}
                               </p>
                             </div>
-                            
+
                             {meeting.status === 'Completed' && (
                               <div className="ml-4 flex-shrink-0">
                                 <div className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-medium">
@@ -151,7 +210,7 @@ export function CalendarDayViewPage() {
                                 </div>
                               </div>
                             )}
-                            
+
                             {meeting.status === 'Scheduled' && (
                               <div className="ml-4 flex-shrink-0">
                                 <Video className="w-5 h-5 text-gray-400" />
@@ -170,7 +229,7 @@ export function CalendarDayViewPage() {
           })}
         </div>
       </Card>
-      
+
       {/* Empty State */}
       {dayMeetings.length === 0 && (
         <div className="mt-8 text-center">

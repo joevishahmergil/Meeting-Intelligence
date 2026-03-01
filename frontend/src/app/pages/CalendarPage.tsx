@@ -1,24 +1,39 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Upload, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
-import { meetings } from '../data/mockData';
+import { fetchMeetings } from '../api';
 import { Meeting } from '../types';
 import { MeetingDetailView } from '../components/MeetingDetailView';
 
 export function CalendarPage() {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 1)); // February 2026
-  
+
+  const [meetingsData, setMeetingsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedMeeting, setSelectedMeeting] = useState<any | null>(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+
+  useEffect(() => {
+    fetchMeetings().then(data => {
+      setMeetingsData(data);
+      setLoading(false);
+    }).catch(e => {
+      console.error(e);
+      setLoading(false);
+    });
+  }, []);
+
   // Get meetings for a specific date
   const getMeetingsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
-    return meetings.filter(m => m.date === dateStr);
+    // Make sure we format date safely using local timezone year/month/day
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return meetingsData.filter((m: any) => m.meeting_date === dateStr || m.date === dateStr);
   };
-  
+
   // Generate calendar days
   const generateCalendarDays = () => {
     const year = currentMonth.getFullYear();
@@ -27,51 +42,51 @@ export function CalendarPage() {
     const lastDay = new Date(year, month + 1, 0);
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay()); // Start from Sunday
-    
+
     const days = [];
     const current = new Date(startDate);
-    
+
     for (let i = 0; i < 42; i++) {
       days.push(new Date(current));
       current.setDate(current.getDate() + 1);
     }
-    
+
     return days;
   };
-  
+
   const calendarDays = generateCalendarDays();
   const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  
+
   const previousMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
   };
-  
+
   const nextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
   };
-  
+
   const isToday = (date: Date) => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
   };
-  
+
   const isCurrentMonth = (date: Date) => {
     return date.getMonth() === currentMonth.getMonth();
   };
-  
+
   const hasMeetings = (date: Date) => {
     return getMeetingsForDate(date).length > 0;
   };
-  
+
   const handleDateClick = (date: Date) => {
     const dateMeetings = getMeetingsForDate(date);
     if (dateMeetings.length > 0) {
       // Navigate to day view
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       navigate(`/calendar/day?date=${dateStr}`);
     }
   };
-  
+
   return (
     <div className="p-8">
       {/* Page Header */}
@@ -85,7 +100,7 @@ export function CalendarPage() {
           Upload Meeting
         </Button>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-6">
         {/* Calendar View */}
         <div>
@@ -102,7 +117,7 @@ export function CalendarPage() {
                 </Button>
               </div>
             </div>
-            
+
             {/* Day Labels */}
             <div className="grid grid-cols-7 gap-2 mb-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -111,14 +126,14 @@ export function CalendarPage() {
                 </div>
               ))}
             </div>
-            
+
             {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-2">
               {calendarDays.map((day, idx) => {
                 const dayMeetings = getMeetingsForDate(day);
-                const hasCompleted = dayMeetings.some(m => m.status === 'Completed');
-                const hasPending = dayMeetings.some(m => m.status === 'Scheduled');
-                
+                const hasCompleted = dayMeetings.some((m: any) => m.status === 'Completed' || m.status === 'completed');
+                const hasPending = dayMeetings.some((m: any) => m.status === 'Scheduled' || m.status === 'scheduled');
+
                 return (
                   <button
                     key={idx}
@@ -147,7 +162,7 @@ export function CalendarPage() {
                 );
               })}
             </div>
-            
+
             {/* Legend */}
             <div className="mt-6 pt-4 border-t border-gray-200">
               <p className="text-sm text-gray-600 mb-2">Legend:</p>
@@ -167,7 +182,7 @@ export function CalendarPage() {
             </div>
           </Card>
         </div>
-        
+
         {/* Meeting Details Panel */}
         <div>
           {selectedMeeting ? (
