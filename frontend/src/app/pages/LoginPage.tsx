@@ -4,6 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { API_URL } from '../api'; 
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -19,7 +20,8 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/auth/login', {
+      // const response = await fetch('http://localhost:8000/api/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -44,7 +46,8 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/auth/register', {
+      // const response = await fetch('http://localhost:8000/api/auth/register', {
+      const response = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, full_name: fullName }),
