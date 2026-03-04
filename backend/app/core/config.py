@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     GROQ_TRANSCRIPTION_MODEL: str = "whisper-large-v3-turbo"  # Groq's transcription model
     
     # CORS Configuration
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,https://meeting-intelligence-vercel.vercel.app"
     
     # Application Settings
     APP_NAME: str = "Meeting Intelligence API"
