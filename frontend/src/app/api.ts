@@ -1,7 +1,7 @@
 // export const API_URL = 'http://localhost:8000/api';
 // export const API_URL = (typeof (import.meta as any).env !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_URL) || 'http://localhost:8000/api';
 export const API_URL = import.meta.env.VITE_API_URL!;
-
+console.log("ENV VALUE:", import.meta.env.VITE_API_URL);
 export const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
     if (!token) {
